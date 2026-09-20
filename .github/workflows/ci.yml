@@ -36,9 +36,13 @@ jobs:
 
       - name: Configure npm with Artifactory
         run: |
+          # Drop lockfiles/npmrc that may point at other registries
+          rm -f package-lock.json npm-shrinkwrap.json .npmrc
           jf npm-config \
             --repo-resolve="${{ env.JF_NPM_RESOLVE }}" \
-            --repo-deploy="${{ env.JF_NPM_DEPLOY }}"
+            --repo-deploy="${{ env.JF_NPM_DEPLOY }}" \
+            --server-id-resolve=setup-jfrog-cli-server \
+            --server-id-deploy=setup-jfrog-cli-server
 
       - name: Make package publishable
         run: |
@@ -53,10 +57,9 @@ jobs:
 
       - name: Install via Artifactory
         run: |
-          jf npm install \
+          jf npm install --ignore-scripts \
             --build-name="${{ env.BUILD_NAME }}" \
             --build-number="${{ github.run_number }}"
-
       - name: SCA / JAS audit
         continue-on-error: true
         run: jf audit --npm --secrets --sast --iac --format=table || true
