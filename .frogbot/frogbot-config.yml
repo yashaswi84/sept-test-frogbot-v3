@@ -1,0 +1,20 @@
+- params:
+    git:
+      repoName: sept-test-frogbot-v3
+      branches:
+        - main
+      aggregateFixes: true
+    scan:
+      minSeverity: "Medium"
+      fixableOnly: true
+      failOnSecurityIssues: true
+      disableJas: false
+      sastChangedFilesOnly: false
+      projects:
+        - workingDirs:
+            - "."
+          installCommand: "npm install --ignore-scripts"
+    jfrogPlatform:
+      # Optional watch — remove if not created yet
+      # watches:
+      #   - frogbot-v3-watch
