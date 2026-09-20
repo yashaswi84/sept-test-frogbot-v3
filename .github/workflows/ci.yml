@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  BUILD_NAME: sept-test-frogbot-v3-ci
+  JF_NPM_RESOLVE: sept-test-npm
+  JF_NPM_DEPLOY: sept-test-npm-local
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Configure npm with Artifactory
+        run: |
+          jf npm-config \
+            --repo-resolve="${{ env.JF_NPM_RESOLVE }}" \
+            --repo-deploy="${{ env.JF_NPM_DEPLOY }}"
+
+      - name: Make package publishable
+        run: |
+          node -e "
+            const fs=require('fs');
+            const p=JSON.parse(fs.readFileSync('package.json','utf8'));
+            p.name='sept-test-frogbot-v3-lab';
+            p.private=false;
+            p.version='1.0.' + process.env.GITHUB_RUN_NUMBER;
+            fs.writeFileSync('package.json', JSON.stringify(p,null,2));
+          "
+
+      - name: Install via Artifactory
+        run: |
+          jf npm install \
+            --build-name="${{ env.BUILD_NAME }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: SCA / JAS audit
+        continue-on-error: true
+        run: jf audit --npm --secrets --sast --iac --format=table || true
+
+      - name: Publish npm package
+        if: github.event_name != 'pull_request'
+        run: |
+          jf npm publish \
+            --build-name="${{ env.BUILD_NAME }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: Publish build-info
+        if: github.event_name != 'pull_request'
+        run: |
+          jf rt bce "${{ env.BUILD_NAME }}" "${{ github.run_number }}"
+          jf rt bag "${{ env.BUILD_NAME }}" "${{ github.run_number }}" || true
+          jf rt bp "${{ env.BUILD_NAME }}" "${{ github.run_number }}"
+
+      - name: Build scan
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: jf build-scan "${{ env.BUILD_NAME }}" "${{ github.run_number }}" --fail=false
